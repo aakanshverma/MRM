@@ -363,3 +363,47 @@ def test_first_quarter_is_incomplete_when_the_data_starts_mid_quarter():
     assert first.label == "2024Q1"
     assert first.is_complete is False
     assert "starts" in first.completeness_note
+
+
+def test_reference_adequacy_is_judged_on_the_scored_count(prepared, config):
+    """A window full of unscored rows is not an adequate baseline.
+
+    The expected distribution is estimated only from records carrying a grade,
+    so adequacy must follow the scored count -- otherwise the adequacy alert
+    says GREEN while PSI (which uses the same scored population) says GREY.
+    """
+    # blank most of MODEL_1's grades inside its reference window
+    frame = prepared.copy()
+    window = (
+        (frame["LOGIN_DATE"].dt.date >= config.model("MODEL_1").reference.start_date)
+        & (frame["LOGIN_DATE"].dt.date <= config.model("MODEL_1").reference.end_date)
+    )
+    targets = frame.index[window][:-20]        # leave only 20 scored
+    frame.loc[targets, "__SEGMENT_MODEL_1"] = "MISSING"
+    frame.loc[targets, "__SEGRANK_MODEL_1"] = float("nan")
+
+    config.thresholds.min_reference_records = 100
+    resolutions = resolve_reference_periods(frame, config)
+    model_1 = resolutions["MODEL_1"]
+    assert model_1.record_count > 100          # plenty of rows...
+    assert model_1.scored_count <= 20          # ...but almost none scored
+    assert model_1.sufficient is False
+    assert any("carry a valid scorecard segment" in warning for warning in model_1.warnings)
+    # the untouched model is unaffected
+    assert resolutions["MODEL_2"].sufficient is True
+
+
+def test_adequacy_and_psi_severity_agree(prepared, config):
+    """The adequacy verdict and the PSI label must not contradict each other."""
+    from model_monitoring.psi_calculator import VS_REFERENCE, compute_psi
+
+    config.thresholds.min_reference_records = 10_000_000
+    resolutions = resolve_reference_periods(prepared, config)
+    _, quarters = select_monitoring_quarters(prepared, config)
+    psi = compute_psi(
+        prepared, config, reference_masks=reference_masks(resolutions),
+        monitored_quarters=quarters,
+    )
+    fixed = psi.summary[psi.summary["COMPARISON"] == VS_REFERENCE]
+    assert all(not r.sufficient for r in resolutions.values())
+    assert set(fixed["SEVERITY"]) == {"GREY"}

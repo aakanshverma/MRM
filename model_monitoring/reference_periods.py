@@ -281,8 +281,19 @@ def resolve_reference_periods(
                 "The reference window selects ZERO records. PSI and CSI cannot be computed "
                 "against it; check the dates, the baseline filter and the population filter."
             )
-        sufficient = record_count >= minimum and scored > 0
-        if 0 < record_count < minimum:
+        # Adequacy is judged on the SCORED count, not the row count. The expected
+        # distribution is estimated only from records that carry a grade, so a
+        # window holding 1,836 rows of which 272 are scored is a 272-observation
+        # baseline -- which is what PSI and CSI are actually computed against.
+        sufficient = scored >= minimum
+        if 0 < scored < minimum:
+            warnings.append(
+                f"Only {scored:,} of {record_count:,} record(s) in the reference period carry a "
+                f"valid scorecard segment, below the configured minimum of {minimum:,}. PSI/CSI "
+                "will be reported but labelled GREY: the expected proportions are estimated from "
+                "that scored sub-population alone and are unstable at this size."
+            )
+        elif 0 < record_count < minimum:
             warnings.append(
                 f"Only {record_count:,} record(s) in the reference period, below the configured "
                 f"minimum of {minimum:,}. PSI/CSI will be reported but labelled GREY: a baseline "
@@ -600,11 +611,12 @@ def prompt_reference_periods(
                 model.reference = previous
                 continue
             minimum = config.thresholds.min_reference_records
-            if count < minimum:
+            if scored_in_window < minimum:
                 output(
-                    f"  ! WARNING: {count:,} record(s) is below the configured minimum of "
-                    f"{minimum:,}. Expected proportions from a sample this small are unstable "
-                    "and every PSI/CSI value will be labelled GREY."
+                    f"  ! WARNING: only {scored_in_window:,} of those record(s) carry a valid "
+                    f"{model.name} segment, below the configured minimum of {minimum:,}. The "
+                    "expected proportions come from that scored sub-population alone, so they "
+                    "are unstable and every PSI/CSI value will be labelled GREY."
                 )
                 if not _prompt_yes_no("  Use this window anyway? [y/N]: ", input_func, output):
                     model.reference = previous
