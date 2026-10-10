@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+*.egg-info/
+.venv/
+venv/
+# Generated monitoring artefacts (keep the committed sample report)
+output/*.xlsx
+output/*.log
+output/charts/
+data/*.csv
+data/*.parquet
+!output/sample/**
+!output/sample/*.xlsx
+!output/sample/*.log

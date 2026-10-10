@@ -1,0 +1,22 @@
+# Core data stack
+pandas>=2.0
+numpy>=1.24
+
+# Excel generation
+openpyxl>=3.1
+
+# Outcome-performance metrics (AUC / Gini / KS). Optional but recommended:
+# the pipeline degrades gracefully to a NumPy fallback when absent.
+scikit-learn>=1.3
+
+# Optional: static PNG chart export for decks / email
+matplotlib>=3.7
+
+# Optional: Parquet input/output support
+pyarrow>=12.0
+
+# Optional: YAML configuration files (JSON works without it)
+PyYAML>=6.0
+
+# Testing
+pytest>=7.4

@@ -1,0 +1,32 @@
+2026-10-10 20:53:11,885 | INFO     | model_monitoring:547 | Credit risk scorecard monitoring pipeline v1.0.0 | configuration: /home/user/MRM/config/config.sample.yaml
+2026-10-10 20:53:11,885 | INFO     | model_monitoring:551 | Scorecards configured:
+  - MODEL_1: segment='MODEL_1_SEGMENT', variables=6, reference=2024-01-01 to 2024-06-30 [DEVELOPMENT]
+  - MODEL_2: segment='MODEL_2_SEGMENT', variables=0, reference=2024-01-01 to 2024-12-31 [DEVELOPMENT]
+  - MODEL_3: segment='MODEL_3_SEGMENT', variables=4, reference=2024-07-01 to 2024-12-31 [PRODUCTION_BASELINE]
+  - MODEL_4: segment='MODEL_4_SEGMENT', variables=3, reference=2025-07-01 to 2025-09-30 [DEVELOPMENT]
+2026-10-10 20:53:11,891 | INFO     | model_monitoring.data_loader:205 | Source 'data/synthetic_scorecard_data.csv' exposes 45 columns (6.4 MB on disk).
+2026-10-10 20:53:12,100 | INFO     | model_monitoring.data_loader:270 | Loaded 25,300 rows x 44 columns (4.2 MB in memory; 1 of 45 source columns pruned) from CSV 'data/synthetic_scorecard_data.csv'
+2026-10-10 20:53:12,197 | WARNING  | model_monitoring.data_validation:221 | [MODEL_1] 78 record(s) hold a segment value outside the configured list. Examples: ['CAT F', 'UNKNOWN'].
+2026-10-10 20:53:12,197 | WARNING  | model_monitoring.data_validation:221 | [MODEL_4] 22 record(s) hold a segment value outside the configured list. Examples: ['CAT X'].
+2026-10-10 20:53:12,197 | WARNING  | model_monitoring.data_validation:221 | 200 duplicated 'LAN_ID' value(s). Record counts and distributions may be inflated; see the Data Quality sheet.
+2026-10-10 20:53:12,197 | INFO     | model_monitoring:366 | Validation: 25,300 rows / 44 columns; date span 2024-01-01 to 2026-09-20; 4 model(s) with usable output; 0 error(s), 3 warning(s)
+2026-10-10 20:53:12,292 | INFO     | model_monitoring.data_validation:384 | 505 bad outcome(s) sit inside an unmatured performance window; they are retained as bads but their cohort is flagged incomplete.
+2026-10-10 20:53:12,330 | INFO     | model_monitoring.reference_periods:321 | Reference population MODEL_1: 2024-01-01 to 2024-06-30 [DEVELOPMENT] -> 4,641 record(s), 4,554 scored
+2026-10-10 20:53:12,356 | INFO     | model_monitoring.reference_periods:321 | Reference population MODEL_2: 2024-01-01 to 2024-12-31 [DEVELOPMENT] -> 8,259 record(s), 8,259 scored
+2026-10-10 20:53:12,378 | INFO     | model_monitoring.reference_periods:321 | Reference population MODEL_3: 2024-07-01 to 2024-12-31 [PRODUCTION_BASELINE] -> 3,618 record(s), 3,618 scored
+2026-10-10 20:53:12,397 | INFO     | model_monitoring.reference_periods:321 | Reference population MODEL_4: 2025-07-01 to 2025-09-30 [DEVELOPMENT] -> 1,836 record(s), 272 scored
+2026-10-10 20:53:12,414 | WARNING  | model_monitoring.reference_periods:391 | 2026Q3 is an incomplete calendar quarter (2026-07-01 to 2026-09-20) and is EXCLUDED from the primary quarterly comparison. Set runtime.include_partial_quarters=true to monitor it explicitly.
+2026-10-10 20:53:12,414 | INFO     | model_monitoring.reference_periods:411 | Monitoring 10 of 11 quarter(s): 2024Q1, 2024Q2, 2024Q3, 2024Q4, 2025Q1, 2025Q2, 2025Q3, 2025Q4, 2026Q1, 2026Q2
+2026-10-10 20:53:12,679 | INFO     | model_monitoring.mer:212 | MER: 40 model-quarter row(s).
+2026-10-10 20:53:12,937 | INFO     | model_monitoring.psi:474 | PSI: 76 model-quarter comparison(s) (40 vs reference, 36 quarter-on-quarter).
+2026-10-10 20:53:12,943 | INFO     | model_monitoring.csi:194 | [MODEL_1] CSI on 11 characteristic(s) x 10 quarter(s) (batch size 50).
+2026-10-10 20:53:13,568 | INFO     | model_monitoring.csi:194 | [MODEL_2] CSI on 8 characteristic(s) x 10 quarter(s) (batch size 50).
+2026-10-10 20:53:14,033 | INFO     | model_monitoring.csi:194 | [MODEL_3] CSI on 7 characteristic(s) x 10 quarter(s) (batch size 50).
+2026-10-10 20:53:14,483 | INFO     | model_monitoring.csi:194 | [MODEL_4] CSI on 5 characteristic(s) x 10 quarter(s) (batch size 50).
+2026-10-10 20:53:14,678 | INFO     | model_monitoring.csi:302 | CSI: 589 model-quarter-variable row(s); 18 AMBER, 45 RED; 0 characteristic(s) skipped.
+2026-10-10 20:53:16,079 | INFO     | model_monitoring.migration:332 | Migration: 76 summary row(s), 2304 matrix cell(s).
+2026-10-10 20:53:16,312 | INFO     | model_monitoring.data_validation:472 | Data quality: 49 check(s) executed on 25,300 rows, 16 material issue(s).
+2026-10-10 20:53:16,957 | INFO     | model_monitoring.performance:300 | Performance: 40 model-quarter row(s); 22 with enough matured outcomes for Gini.
+2026-10-10 20:53:17,102 | INFO     | model_monitoring.alerts:614 | Alerts: 884 row(s) -- RED 116, AMBER 36, GREY 152, GREEN 580.
+2026-10-10 20:53:19,440 | INFO     | model_monitoring.excel_report:193 | Excel workbook written to output/sample/Sample_Scorecard_Monitoring_Report.xlsx
+2026-10-10 20:53:19,443 | INFO     | model_monitoring:598 | Effective configuration written to output/sample/effective_config.json
