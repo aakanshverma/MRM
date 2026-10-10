@@ -1212,6 +1212,39 @@ class ExcelReportBuilder:
             return
 
         row = write_section(
+            sheet, row, "OUTCOME DEFINITION", width=width,
+            note=(
+                "Every figure on this sheet is relative to this definition. A different bad "
+                "definition, window or population gives different numbers for the same book."
+            ),
+        )
+        definition_items = [
+            ("Definition", outcome.describe()),
+            ("Outcome column", outcome.outcome_column or NOT_AVAILABLE),
+            ("Basis", outcome.definition_basis.value),
+            ("Supplied at", f"{outcome.outcome_level.value} level"),
+            ("Metrics measured on", f"one record per {outcome.metrics_level.value.lower()}"),
+            ("Bad values", ", ".join(str(v) for v in outcome.bad_values)),
+            ("Good values", ", ".join(str(v) for v in outcome.good_values)),
+            ("Indeterminate values (excluded, NOT good)",
+             ", ".join(str(v) for v in outcome.indeterminate_values) or "none declared"),
+            ("Observation window (months)", outcome.observation_window_months),
+            ("Outcome as-of date",
+             outcome.outcome_as_of.isoformat() if outcome.outcome_as_of else "max(login date)"),
+            ("Expected PD column", outcome.pd_column or "none - calibration NOT AVAILABLE"),
+        ]
+        row = write_key_values(
+            sheet, row, definition_items, value_col=4, label_width=3,
+            severities={"Indeterminate values (excluded, NOT good)":
+                        "GREEN" if outcome.indeterminate_values else "AMBER"},
+        )
+        caveat = outcome.proxy_caveat()
+        if caveat:
+            row = write_note(sheet, row, caveat, width=width) + 1
+        else:
+            row += 1
+
+        row = write_section(
             sheet, row, "PERFORMANCE SUMMARY BY MODEL AND QUARTER", width=width,
             note=(
                 f"Performance window: {outcome.observation_window_months} months. Accounts whose "
@@ -1225,6 +1258,8 @@ class ExcelReportBuilder:
             number_formats={
                 "TOTAL_RECORDS": FORMAT_COUNT, "RECORDS_WITH_OUTCOME": FORMAT_COUNT,
                 "MATURED_RECORDS": FORMAT_COUNT, "IMMATURE_EXCLUDED": FORMAT_COUNT,
+                "INDETERMINATE_EXCLUDED": FORMAT_COUNT, "UNKNOWN_EXCLUDED": FORMAT_COUNT,
+                "APPLICATIONS_BEFORE_DEDUPE": FORMAT_COUNT, "UNITS_IN_METRIC": FORMAT_COUNT,
                 "BAD_COUNT": FORMAT_COUNT, "GOOD_COUNT": FORMAT_COUNT,
                 "MATURITY_PCT": FORMAT_PCT, "EVENT_RATE_PCT": FORMAT_PCT,
                 "NON_EVENT_RATE_PCT": FORMAT_PCT, "EXPECTED_BAD_RATE_PCT": FORMAT_PCT,
@@ -1245,7 +1280,7 @@ class ExcelReportBuilder:
             sheet, performance.summary,
             overrides={
                 "PERFORMANCE_STATUS": 100, "RANK_ORDERING": 54, "CALIBRATION_VERDICT": 60,
-                "SCORE_SOURCE": 40,
+                "SCORE_SOURCE": 40, "OUTCOME_DEFINITION": 60,
             },
         )
         finalise(

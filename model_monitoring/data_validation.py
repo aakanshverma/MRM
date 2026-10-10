@@ -52,6 +52,7 @@ SEGMENT_PREFIX = "__SEGMENT_"
 SEGMENT_RANK_PREFIX = "__SEGRANK_"
 MATURITY_COLUMN = "__OUTCOME_MATURED"
 OUTCOME_COLUMN = "__OUTCOME_BINARY"
+INDETERMINATE_COLUMN = "__OUTCOME_INDETERMINATE"
 
 CHECK_COLUMNS = [
     "CHECK_ID", "CATEGORY", "CHECK", "MODEL", "QUARTER", "SCOPE",
@@ -341,20 +342,57 @@ def _prepare_outcome(
     series = frame[column]
     bad_values = {str(v).strip().upper() for v in outcome_cfg.bad_values}
     good_values = {str(v).strip().upper() for v in outcome_cfg.good_values}
+    indeterminate_values = {str(v).strip().upper() for v in outcome_cfg.indeterminate_values}
     as_text = series.astype("string").str.strip().str.upper()
     binary = pd.Series(np.nan, index=frame.index, dtype="float64")
     binary[as_text.isin(bad_values).fillna(False)] = 1.0
     binary[as_text.isin(good_values).fillna(False)] = 0.0
-    unmapped = int((series.notna() & binary.isna()).sum())
+
+    # The indeterminate band (e.g. 1-29 DPD, or a thin-file / no-bureau-hit
+    # code) is neither good nor bad.  It is tracked rather than merged into
+    # either side, because classing it as good is exactly how a bad rate gets
+    # understated and a Gini flattered.
+    indeterminate = as_text.isin(indeterminate_values).fillna(False) if indeterminate_values \
+        else pd.Series(False, index=frame.index)
+    binary[indeterminate] = np.nan
+    frame[INDETERMINATE_COLUMN] = indeterminate
+    if int(indeterminate.sum()):
+        logger.info(
+            "%d record(s) carry an indeterminate outcome value and are excluded from every "
+            "performance metric (not counted as good).", int(indeterminate.sum()),
+        )
+
+    unmapped_mask = series.notna() & binary.isna() & ~indeterminate
+    unmapped = int(unmapped_mask.sum())
     if unmapped:
-        examples = sorted({str(v) for v in series[series.notna() & binary.isna()].unique()[:8]})
+        examples = sorted({str(v) for v in series[unmapped_mask].unique()[:8]})
         message = (
-            f"{unmapped:,} outcome value(s) matched neither outcome.bad_values nor "
-            f"outcome.good_values and were treated as unknown. Examples: {examples}."
+            f"{unmapped:,} outcome value(s) matched none of outcome.bad_values, "
+            f"outcome.good_values or outcome.indeterminate_values and were treated as unknown "
+            f"(excluded from performance metrics, NOT counted as good). Examples: {examples}. "
+            "If any of these is a thin-file / no-bureau-hit code, add it to "
+            "outcome.indeterminate_values so it is reported explicitly."
         )
         logger.warning(message)
         if execution_log is not None:
             execution_log.warning(message)
+
+    # A genuinely binary flag with no indeterminate band declared is worth
+    # querying on an off-us bureau definition: a 'no hit' customer coded 0 is
+    # indistinguishable from a customer observed to be current.
+    if outcome_cfg.is_off_us and not indeterminate_values:
+        message = (
+            f"Outcome '{column}' is configured as OFF_US but no "
+            "outcome.indeterminate_values are declared. Bureau-derived flags normally carry a "
+            "middle band (1-29 DPD) and a no-hit / thin-file population. If either is encoded "
+            "as a good (0) in this extract, the bad rate is understated and every "
+            "discrimination metric in this pack is flattered. Confirm the encoding with the "
+            "bureau data owner."
+        )
+        logger.warning(message)
+        if execution_log is not None:
+            execution_log.warning(message)
+
     frame[OUTCOME_COLUMN] = binary
 
     # -- maturity ----------------------------------------------------------
@@ -998,7 +1036,8 @@ def variable_missingness_checks(
 
 __all__ = [
     "QUARTER_COLUMN", "SEGMENT_PREFIX", "SEGMENT_RANK_PREFIX", "OUTCOME_COLUMN",
-    "MATURITY_COLUMN", "CHECK_COLUMNS", "ValidationError", "ValidationReport",
+    "MATURITY_COLUMN", "INDETERMINATE_COLUMN", "CHECK_COLUMNS",
+    "ValidationError", "ValidationReport",
     "validate_schema", "prepare_frame", "run_data_quality_checks",
     "variable_missingness_checks",
 ]

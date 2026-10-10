@@ -819,6 +819,77 @@ class DataSourceConfig:
         )
 
 
+class OutcomeBasis(str, Enum):
+    """Whose delinquency the outcome flag observes.
+
+    This is not cosmetic.  An ``OFF_US`` flag (bureau-observed delinquency on
+    *other* lenders' accounts) covers the whole through-the-door population,
+    declines included, which is its great advantage: rank ordering measured on
+    it is free of the accept-only selection bias that limits on-book
+    performance monitoring.  But it is almost never the scorecard's development
+    target, so its Gini is a proxy and is not comparable with development Gini.
+    The report says so wherever the metric appears.
+    """
+
+    ON_US = "ON_US"            # delinquency on our own account
+    OFF_US = "OFF_US"          # bureau-observed, other lenders' accounts
+    COMBINED = "COMBINED"      # worst of both
+
+
+class OutcomeLevel(str, Enum):
+    """The grain the outcome flag is supplied at."""
+
+    APPLICATION = "APPLICATION"   # one flag per LAN / application
+    CUSTOMER = "CUSTOMER"         # one flag per customer, repeated across their applications
+
+
+@dataclass
+class OutcomeSourceConfig:
+    """An outcome flag supplied as a separate file, joined onto the extract.
+
+    Bureau-derived flags usually arrive this way: one row per customer from a
+    later bureau pull, rather than a column already sitting on the application
+    extract.
+    """
+
+    path: Optional[str] = None
+    fmt: str = "auto"                      # auto | csv | excel | parquet
+    #: Key column in the outcome file.
+    key_column: Optional[str] = None
+    #: Column in the main extract to join on (defaults to the customer column).
+    join_on: Optional[str] = None
+    #: Columns to bring across (empty = every column except the key).
+    columns: List[str] = field(default_factory=list)
+    sheet_name: Optional[Any] = 0
+    delimiter: str = ","
+    encoding: str = "utf-8"
+
+    def __post_init__(self) -> None:
+        self.fmt = str(self.fmt).strip().lower()
+        if self.fmt not in {"auto", "csv", "excel", "parquet"}:
+            raise ConfigError(f"outcome.source.fmt={self.fmt!r} not supported.")
+        self.columns = [str(c) for c in (self.columns or [])]
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.path)
+
+    def resolved_format(self) -> str:
+        if self.fmt != "auto":
+            return self.fmt
+        suffix = Path(self.path or "").suffix.lower()
+        if suffix in {".csv", ".txt", ".tsv", ".gz", ".bz2", ".zip"}:
+            return "csv"
+        if suffix in {".xlsx", ".xlsm", ".xls"}:
+            return "excel"
+        if suffix in {".parquet", ".pq"}:
+            return "parquet"
+        raise ConfigError(
+            f"Cannot infer the outcome file format from {self.path!r}; set "
+            "outcome.source.fmt explicitly."
+        )
+
+
 @dataclass
 class OutcomeConfig:
     """Optional default / delinquency outcome, enabling performance metrics.
@@ -826,11 +897,38 @@ class OutcomeConfig:
     When no outcome is supplied the pipeline reports performance metrics as
     ``NOT AVAILABLE`` with the missing dependency named.  It never fabricates
     discrimination statistics from segment distributions alone.
+
+    Three fields decide whether the resulting numbers mean what a reader will
+    assume they mean:
+
+    * ``definition_basis`` -- on-us or off-us (see :class:`OutcomeBasis`)
+    * ``indeterminate_values`` -- the middle band that is neither good nor bad
+    * ``outcome_level`` -- per application, or one flag per customer
     """
 
     outcome_column: Optional[str] = None          # binary 1 = bad / event
     bad_values: List[Any] = field(default_factory=lambda: [1, "1", True, "Y", "BAD", "DEFAULT"])
     good_values: List[Any] = field(default_factory=lambda: [0, "0", False, "N", "GOOD"])
+    #: Values that are explicitly NEITHER good nor bad -- the indeterminate
+    #: band (e.g. 1-29 DPD) and any "no bureau hit / thin file" code.  They are
+    #: excluded from every performance metric and counted separately.
+    #: Leaving a thin-file code out of this list is the single most damaging
+    #: configuration error available here: it silently becomes a good customer.
+    indeterminate_values: List[Any] = field(default_factory=list)
+    #: Human-readable definition, printed beside every performance metric,
+    #: e.g. "Off-us 30+ DPD ever within 12 months of login (bureau)".
+    definition_label: str = ""
+    #: Whose delinquency this observes.
+    definition_basis: OutcomeBasis = OutcomeBasis.ON_US
+    #: The grain the flag is supplied at.
+    outcome_level: OutcomeLevel = OutcomeLevel.APPLICATION
+    #: Compute discrimination on one record per customer.  Defaults to CUSTOMER
+    #: when the flag is customer-level, because repeating one flag across a
+    #: customer's applications inflates the effective sample size and
+    #: over-weights repeat applicants in AUC and KS.
+    metrics_level: Optional[OutcomeLevel] = None
+    #: An outcome flag supplied as a separate file to be joined on.
+    source: Optional[OutcomeSourceConfig] = None
     #: Continuous score used for AUC/KS.  Defaults to the model's score column,
     #: falling back to the ordinal segment rank (documented as a coarse proxy).
     score_column: Optional[str] = None
@@ -855,10 +953,78 @@ class OutcomeConfig:
         self.observation_window_months = int(self.observation_window_months)
         if self.observation_window_months < 0:
             raise ConfigError("outcome.observation_window_months must be >= 0.")
+        self.definition_basis = _enum(
+            OutcomeBasis, self.definition_basis, "outcome.definition_basis"
+        )
+        self.outcome_level = _enum(OutcomeLevel, self.outcome_level, "outcome.outcome_level")
+        if self.metrics_level is None:
+            # A customer-level flag repeated across applications must be
+            # de-duplicated before discrimination is measured.
+            self.metrics_level = (
+                OutcomeLevel.CUSTOMER
+                if self.outcome_level is OutcomeLevel.CUSTOMER
+                else OutcomeLevel.APPLICATION
+            )
+        else:
+            self.metrics_level = _enum(
+                OutcomeLevel, self.metrics_level, "outcome.metrics_level"
+            )
+        if self.source is not None and not isinstance(self.source, OutcomeSourceConfig):
+            self.source = OutcomeSourceConfig(**dict(self.source))
+        overlap = {str(v).strip().upper() for v in self.bad_values} & {
+            str(v).strip().upper() for v in self.good_values
+        }
+        if overlap:
+            raise ConfigError(
+                f"outcome.bad_values and outcome.good_values overlap on {sorted(overlap)}; "
+                "a value cannot be both."
+            )
+        indeterminate = {str(v).strip().upper() for v in self.indeterminate_values}
+        clash = indeterminate & (
+            {str(v).strip().upper() for v in self.bad_values}
+            | {str(v).strip().upper() for v in self.good_values}
+        )
+        if clash:
+            raise ConfigError(
+                f"outcome.indeterminate_values clashes with bad/good values on {sorted(clash)}."
+            )
 
     @property
     def enabled(self) -> bool:
         return bool(self.outcome_column)
+
+    @property
+    def is_off_us(self) -> bool:
+        return self.definition_basis is OutcomeBasis.OFF_US
+
+    def describe(self) -> str:
+        """One line naming exactly what the flag measures."""
+        if not self.enabled:
+            return NOT_CONFIGURED_OUTCOME
+        label = self.definition_label or f"'{self.outcome_column}' flag"
+        return (
+            f"{label} [{self.definition_basis.value}, {self.outcome_level.value}-level, "
+            f"{self.observation_window_months}-month window]"
+        )
+
+    def proxy_caveat(self) -> str:
+        """The caveat that must travel with an off-us proxy metric."""
+        if not self.is_off_us:
+            return ""
+        return (
+            "This outcome is OFF-US: bureau-observed delinquency on other lenders' accounts, "
+            "not performance on our own book. Two consequences. (1) It covers the full "
+            "through-the-door population including declined and not-disbursed applications, so "
+            "rank ordering measured on it is free of the accept-only selection bias that limits "
+            "on-book monitoring -- this is its main advantage. (2) It is almost certainly not "
+            "the target the scorecard was developed on, so the Gini and KS here are PROXY "
+            "discrimination measures and are not comparable with development-time figures or "
+            "with on-us performance. Set the Gini thresholds for this definition rather than "
+            "reusing the ones agreed for an on-us default definition."
+        )
+
+
+NOT_CONFIGURED_OUTCOME = "NOT CONFIGURED"
 
 
 @dataclass
@@ -1289,6 +1455,7 @@ def default_config(
 __all__ = [
     "SEGMENT_ORDER", "RISK_DIRECTION", "DEFAULT_MODEL_NAMES",
     "RiskDirection", "ReferenceMode", "VariableType", "VariableRole", "Severity",
+    "OutcomeBasis", "OutcomeLevel", "OutcomeSourceConfig",
     "MultiRecordPolicy", "SmoothingMethod",
     "ConfigError", "SegmentConfig", "SmoothingConfig", "ThresholdBand", "ThresholdConfig",
     "VariableSpec", "VariableDiscoveryConfig", "ReferencePeriodConfig", "ModelConfig",

@@ -726,6 +726,12 @@
       "N",
       "GOOD"
     ],
+    "indeterminate_values": [],
+    "definition_label": "",
+    "definition_basis": "ON_US",
+    "outcome_level": "APPLICATION",
+    "metrics_level": "APPLICATION",
+    "source": null,
     "score_column": null,
     "score_higher_is_riskier": false,
     "pd_column": "EXPECTED_PD",
@@ -767,6 +773,6 @@
     "log_level": "INFO",
     "log_to_file": true
   },
-  "execution_timestamp": "2026-10-10T21:02:52",
+  "execution_timestamp": "2026-10-10T21:23:39",
   "config_path": "/home/user/MRM/config/config.sample.yaml"
 }

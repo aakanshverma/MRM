@@ -1,0 +1,794 @@
+{
+  "report_title": "Credit Risk Scorecard Monitoring Report",
+  "entity_name": "Example NBFC Limited - Risk Analytics (off-us 30+ DPD outcome)",
+  "framework_version": "1.0.0",
+  "prepared_by": "Model Validation Unit",
+  "governance_note": "PSI/CSI thresholds are conventional monitoring guidelines. A breach triggers investigation under the model risk management policy; it does not by itself invalidate a scorecard, nor does compliance with them establish regulatory approval.",
+  "lan_column": "LAN_ID",
+  "customer_column": "CUSTOMER_ID",
+  "date_column": "LOGIN_DATE",
+  "extra_columns": [
+    "PRODUCT",
+    "CHANNEL",
+    "BRANCH_STATE"
+  ],
+  "models": [
+    {
+      "name": "MODEL_1",
+      "segment_column": "MODEL_1_SEGMENT",
+      "score_column": "MODEL_1_TOTAL_SCORE",
+      "pd_column": null,
+      "variables": [
+        {
+          "name": "MODEL_1_VARIABLE_1",
+          "var_type": "NUMERIC",
+          "role": "FEATURE",
+          "label": "Bureau score",
+          "bins": [
+            300.0,
+            600.0,
+            650.0,
+            700.0,
+            750.0,
+            800.0,
+            900.0
+          ],
+          "categories": null,
+          "category_map": null,
+          "critical": true,
+          "subscore_column": "MODEL_1_VARIABLE_1_SUBSCORE",
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_1_VARIABLE_2",
+          "var_type": "NUMERIC",
+          "role": "FEATURE",
+          "label": "FOIR (%)",
+          "bins": [
+            0.0,
+            20.0,
+            30.0,
+            40.0,
+            50.0,
+            60.0,
+            100.0
+          ],
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": "MODEL_1_VARIABLE_2_SUBSCORE",
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_1_VARIABLE_3",
+          "var_type": "NUMERIC",
+          "role": "FEATURE",
+          "label": "Credit history vintage (months)",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": "MODEL_1_VARIABLE_3_SUBSCORE",
+          "n_bins": 8,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_1_VARIABLE_4",
+          "var_type": "NUMERIC",
+          "role": "FEATURE",
+          "label": "Bureau enquiries (6m)",
+          "bins": [
+            0.0,
+            1.0,
+            2.0,
+            3.0,
+            5.0,
+            100.0
+          ],
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": "MODEL_1_VARIABLE_4_SUBSCORE",
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_1_VARIABLE_5",
+          "var_type": "CATEGORICAL",
+          "role": "FEATURE",
+          "label": "Employment type",
+          "bins": null,
+          "categories": [
+            "SALARIED",
+            "SELF_EMPLOYED",
+            "SELF_EMPLOYED_PROF"
+          ],
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_1_VARIABLE_6",
+          "var_type": "CATEGORICAL",
+          "role": "FEATURE",
+          "label": "Residence type",
+          "bins": null,
+          "categories": [
+            "OWNED",
+            "RENTED",
+            "PARENTAL",
+            "COMPANY"
+          ],
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_1_TOTAL_SCORE",
+          "var_type": "NUMERIC",
+          "role": "SCORE",
+          "label": "MODEL_1 final score",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": true,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_1_VARIABLE_1_SUBSCORE",
+          "var_type": "NUMERIC",
+          "role": "SUBSCORE",
+          "label": "Bureau score (subscore)",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": true,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_1_VARIABLE_2_SUBSCORE",
+          "var_type": "NUMERIC",
+          "role": "SUBSCORE",
+          "label": "FOIR (%) (subscore)",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_1_VARIABLE_3_SUBSCORE",
+          "var_type": "NUMERIC",
+          "role": "SUBSCORE",
+          "label": "Credit history vintage (months) (subscore)",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": 8,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_1_VARIABLE_4_SUBSCORE",
+          "var_type": "NUMERIC",
+          "role": "SUBSCORE",
+          "label": "Bureau enquiries (6m) (subscore)",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        }
+      ],
+      "discovery": null,
+      "reference": {
+        "model": "MODEL_1",
+        "start_date": "2024-01-01",
+        "end_date": "2024-06-30",
+        "mode": "DEVELOPMENT",
+        "baseline_filter": null,
+        "source_note": "Development sample signed off by MRMC on 2024-08-14",
+        "record_count": 4641,
+        "configured_by": "CONFIG_FILE"
+      },
+      "population_filter": null,
+      "description": "Unsecured personal loan application scorecard",
+      "owner": "Retail Risk - Unsecured",
+      "version": "v2.1",
+      "enabled": true,
+      "variables_resolved": true
+    },
+    {
+      "name": "MODEL_2",
+      "segment_column": "MODEL_2_SEGMENT",
+      "score_column": "MODEL_2_TOTAL_SCORE",
+      "pd_column": null,
+      "variables": [
+        {
+          "name": "MODEL_2_VARIABLE_1",
+          "var_type": "NUMERIC",
+          "role": "FEATURE",
+          "label": "MODEL_2_VARIABLE_1",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_2_VARIABLE_2",
+          "var_type": "NUMERIC",
+          "role": "FEATURE",
+          "label": "MODEL_2_VARIABLE_2",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_2_VARIABLE_3",
+          "var_type": "NUMERIC",
+          "role": "FEATURE",
+          "label": "MODEL_2_VARIABLE_3",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_2_VARIABLE_4",
+          "var_type": "NUMERIC",
+          "role": "FEATURE",
+          "label": "MODEL_2_VARIABLE_4",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_2_VARIABLE_5",
+          "var_type": "CATEGORICAL",
+          "role": "FEATURE",
+          "label": "MODEL_2_VARIABLE_5",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_2_TOTAL_SCORE",
+          "var_type": "NUMERIC",
+          "role": "SCORE",
+          "label": "MODEL_2 final score",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": true,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_2_VARIABLE_1_SUBSCORE",
+          "var_type": "NUMERIC",
+          "role": "SUBSCORE",
+          "label": "MODEL_2_VARIABLE_1_SUBSCORE",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_2_VARIABLE_4_SUBSCORE",
+          "var_type": "NUMERIC",
+          "role": "SUBSCORE",
+          "label": "MODEL_2_VARIABLE_4_SUBSCORE",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        }
+      ],
+      "discovery": {
+        "include_patterns": [
+          "^MODEL_2_VARIABLE_"
+        ],
+        "exclude_patterns": [
+          "_WOE$"
+        ],
+        "subscore_suffix": "_SUBSCORE",
+        "monitor_subscores": true,
+        "categorical_max_unique": 15,
+        "enabled": true
+      },
+      "reference": {
+        "model": "MODEL_2",
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "mode": "DEVELOPMENT",
+        "baseline_filter": null,
+        "source_note": "Full-year development sample",
+        "record_count": 8259,
+        "configured_by": "CONFIG_FILE"
+      },
+      "population_filter": null,
+      "description": "Loan against property application scorecard",
+      "owner": "Retail Risk - Secured",
+      "version": "v1.4",
+      "enabled": true,
+      "variables_resolved": true
+    },
+    {
+      "name": "MODEL_3",
+      "segment_column": "MODEL_3_SEGMENT",
+      "score_column": "MODEL_3_TOTAL_SCORE",
+      "pd_column": null,
+      "variables": [
+        {
+          "name": "MODEL_3_VARIABLE_1",
+          "var_type": "NUMERIC",
+          "role": "FEATURE",
+          "label": "Annual turnover",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": "MODEL_3_VARIABLE_1_SUBSCORE",
+          "n_bins": 10,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_3_VARIABLE_2",
+          "var_type": "CATEGORICAL",
+          "role": "FEATURE",
+          "label": "Business type",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": true,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_3_VARIABLE_3",
+          "var_type": "NUMERIC",
+          "role": "FEATURE",
+          "label": "Current ratio",
+          "bins": [
+            0.0,
+            0.8,
+            1.0,
+            1.25,
+            1.5,
+            2.0,
+            10.0
+          ],
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": "MODEL_3_VARIABLE_3_SUBSCORE",
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_3_VARIABLE_4",
+          "var_type": "CATEGORICAL",
+          "role": "FEATURE",
+          "label": "GST filings in last 12 months",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_3_TOTAL_SCORE",
+          "var_type": "NUMERIC",
+          "role": "SCORE",
+          "label": "MODEL_3 final score",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": true,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_3_VARIABLE_1_SUBSCORE",
+          "var_type": "NUMERIC",
+          "role": "SUBSCORE",
+          "label": "Annual turnover (subscore)",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": 10,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_3_VARIABLE_3_SUBSCORE",
+          "var_type": "NUMERIC",
+          "role": "SUBSCORE",
+          "label": "Current ratio (subscore)",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        }
+      ],
+      "discovery": null,
+      "reference": {
+        "model": "MODEL_3",
+        "start_date": "2024-07-01",
+        "end_date": "2024-12-31",
+        "mode": "PRODUCTION_BASELINE",
+        "baseline_filter": null,
+        "source_note": "First two stable quarters after the v3.0 implementation",
+        "record_count": 3618,
+        "configured_by": "CONFIG_FILE"
+      },
+      "population_filter": null,
+      "description": "Business loan application scorecard",
+      "owner": "SME Risk",
+      "version": "v3.0",
+      "enabled": true,
+      "variables_resolved": true
+    },
+    {
+      "name": "MODEL_4",
+      "segment_column": "MODEL_4_SEGMENT",
+      "score_column": "MODEL_4_TOTAL_SCORE",
+      "pd_column": null,
+      "variables": [
+        {
+          "name": "MODEL_4_VARIABLE_1",
+          "var_type": "NUMERIC",
+          "role": "FEATURE",
+          "label": "Deposit-to-EMI ratio",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": "MODEL_4_VARIABLE_1_SUBSCORE",
+          "n_bins": 5,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_4_VARIABLE_2",
+          "var_type": "CATEGORICAL",
+          "role": "FEATURE",
+          "label": "Application velocity (30d)",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_4_VARIABLE_3",
+          "var_type": "CATEGORICAL",
+          "role": "FEATURE",
+          "label": "Device risk band",
+          "bins": null,
+          "categories": [
+            "LOW",
+            "MEDIUM",
+            "HIGH"
+          ],
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_4_TOTAL_SCORE",
+          "var_type": "NUMERIC",
+          "role": "SCORE",
+          "label": "MODEL_4 final score",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": true,
+          "subscore_column": null,
+          "n_bins": null,
+          "enabled": true,
+          "notes": ""
+        },
+        {
+          "name": "MODEL_4_VARIABLE_1_SUBSCORE",
+          "var_type": "NUMERIC",
+          "role": "SUBSCORE",
+          "label": "Deposit-to-EMI ratio (subscore)",
+          "bins": null,
+          "categories": null,
+          "category_map": null,
+          "critical": false,
+          "subscore_column": null,
+          "n_bins": 5,
+          "enabled": true,
+          "notes": ""
+        }
+      ],
+      "discovery": null,
+      "reference": {
+        "model": "MODEL_4",
+        "start_date": "2025-07-01",
+        "end_date": "2025-09-30",
+        "mode": "DEVELOPMENT",
+        "baseline_filter": null,
+        "source_note": "Pilot period only - deliberately thin, see the adequacy alert",
+        "record_count": 1836,
+        "configured_by": "CONFIG_FILE"
+      },
+      "population_filter": null,
+      "description": "Digital-channel fraud/credit hybrid scorecard (newly implemented)",
+      "owner": "Digital Risk",
+      "version": "v0.9",
+      "enabled": true,
+      "variables_resolved": true
+    }
+  ],
+  "segments": {
+    "segment_order": [
+      "CAT A",
+      "CAT B",
+      "CAT C1",
+      "CAT C2",
+      "CAT D",
+      "CAT E"
+    ],
+    "risk_direction": "A_TO_E_INCREASING",
+    "riskier_segment_count": 2,
+    "missing_label": "MISSING",
+    "invalid_label": "INVALID"
+  },
+  "thresholds": {
+    "psi": {
+      "amber": 0.1,
+      "red": 0.25
+    },
+    "csi": {
+      "amber": 0.1,
+      "red": 0.25
+    },
+    "csi_critical": {
+      "amber": 0.05,
+      "red": 0.15
+    },
+    "csi_variable_overrides": {
+      "MODEL_1_VARIABLE_1": {
+        "amber": 0.05,
+        "red": 0.12
+      }
+    },
+    "min_reference_records": 500,
+    "min_monitoring_records": 200,
+    "min_variable_records": 100,
+    "missingness_increase_pp": {
+      "amber": 5.0,
+      "red": 10.0
+    },
+    "missingness_level_pct": {
+      "amber": 20.0,
+      "red": 50.0
+    },
+    "unseen_category_rate_pct": {
+      "amber": 1.0,
+      "red": 5.0
+    },
+    "duplicate_rate_pct": {
+      "amber": 1.0,
+      "red": 5.0
+    },
+    "invalid_segment_rate_pct": {
+      "amber": 0.5,
+      "red": 2.0
+    },
+    "missing_segment_rate_pct": {
+      "amber": 2.0,
+      "red": 5.0
+    },
+    "record_count_change_pct": {
+      "amber": 30.0,
+      "red": 50.0
+    },
+    "concentration_pct": {
+      "amber": 50.0,
+      "red": 70.0
+    },
+    "net_downgrade_pp": {
+      "amber": 5.0,
+      "red": 10.0
+    },
+    "riskier_share_increase_pp": {
+      "amber": 5.0,
+      "red": 10.0
+    },
+    "min_gini_amber": 0.22,
+    "min_gini_red": 0.14,
+    "min_outcome_records": 300,
+    "min_bad_count": 30
+  },
+  "smoothing": {
+    "method": "PSEUDOCOUNT",
+    "pseudocount": 0.5,
+    "tolerance": 1e-09
+  },
+  "data_source": {
+    "path": "data/synthetic_scorecard_data.csv",
+    "fmt": "auto",
+    "sheet_name": 0,
+    "delimiter": ",",
+    "encoding": "utf-8",
+    "chunksize": null,
+    "nrows": null,
+    "prune_columns": true,
+    "optimise_dtypes": true,
+    "na_values": [
+      "",
+      "NA",
+      "N/A",
+      "NULL",
+      "null",
+      "None",
+      "-",
+      "?",
+      "#N/A"
+    ]
+  },
+  "outcome": {
+    "outcome_column": "OFFUS_30P_DPD",
+    "bad_values": [
+      1,
+      "1",
+      "Y",
+      "30+",
+      "30PLUS"
+    ],
+    "good_values": [
+      0,
+      "0",
+      "N",
+      "CURRENT"
+    ],
+    "indeterminate_values": [
+      "INDET_1_29_DPD",
+      "NO_HIT",
+      "THIN_FILE",
+      "NOT_FOUND"
+    ],
+    "definition_label": "Off-us 30+ DPD ever within 12 months of login (bureau trade lines)",
+    "definition_basis": "OFF_US",
+    "outcome_level": "CUSTOMER",
+    "metrics_level": "CUSTOMER",
+    "source": {
+      "path": "data/offus_30plus_flag.csv",
+      "fmt": "auto",
+      "key_column": "CUSTOMER_ID",
+      "join_on": "CUSTOMER_ID",
+      "columns": [
+        "OFFUS_30P_DPD"
+      ],
+      "sheet_name": 0,
+      "delimiter": ",",
+      "encoding": "utf-8"
+    },
+    "score_column": null,
+    "score_higher_is_riskier": false,
+    "pd_column": null,
+    "observation_window_months": 12,
+    "maturity_column": null,
+    "outcome_as_of": "2026-09-20",
+    "exclude_immature": true,
+    "vintage_date_column": null
+  },
+  "excel": {
+    "output_dir": "output/offus",
+    "filename_template": "Sample_OffUs_30plus_DPD_Report.xlsx",
+    "top_n": 25,
+    "max_rows_per_sheet": 200000,
+    "use_excel_tables": true,
+    "excel_table_row_limit": 50000,
+    "include_charts": true,
+    "export_png_charts": false,
+    "conditional_formatting_row_limit": 50000,
+    "freeze_panes": true,
+    "autofilter": true
+  },
+  "runtime": {
+    "include_partial_quarters": false,
+    "min_quarter_records": 30,
+    "multi_record_policy": "LATEST",
+    "csi_variable_batch_size": 50,
+    "csi_variable_whitelist": [],
+    "csi_top_n": 25,
+    "default_numeric_bins": 10,
+    "rare_category_min_share": 0.01,
+    "csi_scope": "MODEL_OUTPUT",
+    "alert_include_green": true,
+    "csi_include_qoq": true,
+    "psi_include_missing_segment": false,
+    "display_decimals": 4,
+    "non_interactive": true,
+    "random_seed": 42,
+    "log_level": "INFO",
+    "log_to_file": true
+  },
+  "execution_timestamp": "2026-10-10T21:23:49",
+  "config_path": "/home/user/MRM/config/config.offus_30plus.yaml"
+}

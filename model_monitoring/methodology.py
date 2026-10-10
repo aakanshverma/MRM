@@ -122,7 +122,7 @@ def formula_frame(config: MonitoringConfig) -> pd.DataFrame:
         {
             "METRIC": "Event rate / bad rate",
             "FORMULA": "bads / matured records",
-            "APPLIED TO": "accounts whose performance window has elapsed",
+            "APPLIED TO": f"{config.outcome.describe()}; accounts whose window has elapsed",
             "INTERPRETATION": (
                 "Immature accounts are excluded, never counted as good: an account with no "
                 "default yet is an unknown."
@@ -223,6 +223,23 @@ def limitations_frame(config: MonitoringConfig) -> pd.DataFrame:
          f"Quarter-on-quarter migration joins on {config.customer_column} with policy "
          f"{config.runtime.multi_record_policy.value}. Where few customers appear in both "
          "periods the matrix is reported GREY rather than inferred from unmatched populations."),
+        ("Off-us outcome is a proxy",
+         config.outcome.proxy_caveat() or
+         "Not applicable: the configured outcome is on-us, measured on our own book."),
+        ("Indeterminate outcomes are excluded, not reclassified",
+         "Records in the indeterminate band (for example 1-29 DPD) and records with no outcome "
+         "information (thin file, no bureau hit) are excluded from every performance metric "
+         "rather than merged into the good population. Declared indeterminate values: "
+         + (", ".join(str(v) for v in config.outcome.indeterminate_values) or "NONE DECLARED -- "
+            "if the extract encodes a no-information population as a good, the bad rate is "
+            "understated and every discrimination metric here is flattered.")),
+        ("Customer-level outcomes are de-duplicated",
+         "Where the outcome flag is supplied per customer rather than per application, "
+         "discrimination is measured on one record per customer (policy "
+         f"{config.runtime.multi_record_policy.value}). Repeating one flag across a customer's "
+         "applications would inflate the effective sample size behind AUC and KS, because those "
+         "observations are perfectly correlated by construction, and would over-weight repeat "
+         "applicants."),
         ("Right-censoring",
          f"With a {config.outcome.observation_window_months}-month performance window, recent "
          "cohorts are incomplete. Their bad rates are censored lower bounds, flagged "

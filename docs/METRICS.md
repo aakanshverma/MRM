@@ -223,6 +223,97 @@ configuration. It is not by itself evidence of model deterioration.
 Requires a matured outcome label. Without one, every metric below is reported
 as `NOT AVAILABLE` with its missing dependency named.
 
+### What the outcome flag measures
+
+Three configuration fields decide whether the numbers mean what a reader will
+assume they mean. All three are printed on the `09 Outcome Performance` sheet
+above the metrics, and on every row of the summary table.
+
+| Field | Why it changes the interpretation |
+|---|---|
+| `definition_basis` | `ON_US` (our own book) vs `OFF_US` (bureau-observed delinquency on **other lenders'** accounts) vs `COMBINED` |
+| `indeterminate_values` | the band that is neither good nor bad, plus any no-information population |
+| `outcome_level` | one flag per application, or one per customer repeated across their applications |
+
+**Off-us outcomes are a proxy, with a real advantage.** An off-us 30+ DPD flag
+covers the full through-the-door population — declines and not-disbursed
+applications included — so rank ordering measured on it is free of the
+accept-only selection bias that limits on-book performance monitoring. That is
+genuinely valuable: it is the closest thing to an unbiased read on whether a
+scorecard still separates risk across everyone it scores.
+
+But it is almost never the target the scorecard was developed on. Its Gini and
+KS are therefore **proxy** discrimination measures, not a restatement of
+development performance, and they are not comparable with development-time
+figures or with on-us performance. Two practical consequences:
+
+* Set the Gini floors for *this* definition. A 30+ DPD off-us target is a
+  milder bad definition measured on a different population than on-us 90+
+  default, and typically yields a lower Gini. Reusing floors agreed for an
+  on-us default definition will flag healthy models as failing.
+* Do not validate an on-us PD calibration against an off-us target. Leave
+  `pd_column` unset and the pack reports calibration as `NOT AVAILABLE`
+  rather than comparing two different quantities.
+
+The caveat travels with the metric: it appears in `PERFORMANCE_STATUS`, on the
+definition banner, in the availability table and in the limitations list.
+
+### The indeterminate band
+
+A 30+ DPD definition leaves a middle: customers 1–29 days past due are
+delinquent but not bad. Bureau data adds a second group — customers with no
+trade line at all (thin file, no hit, not found), whose delinquency is simply
+unknown.
+
+Both are declared in `indeterminate_values`, excluded from every performance
+metric, and counted in `INDETERMINATE_EXCLUDED`. They are never merged into the
+good population.
+
+> This is the single most damaging configuration error available here. If a
+> no-bureau-hit population is encoded as `0` and `0` is in `good_values`, those
+> customers silently become good: the bad rate is understated, the good
+> population is diluted with unknowns, and every discrimination metric in the
+> pack is flattered. The pipeline warns when an `OFF_US` outcome declares no
+> indeterminate values at all, but it cannot detect a no-hit code disguised as
+> a zero — that has to be confirmed with whoever supplies the flag.
+
+Values matching none of the three lists are treated as unknown (excluded, not
+good) and reported with examples, so an unexpected encoding surfaces rather
+than being absorbed.
+
+### Customer-level flags
+
+A flag supplied per customer is repeated across that customer's applications.
+Left as-is, three applications from one customer contribute three perfectly
+correlated observations to AUC and KS, which inflates the effective sample size
+and over-weights repeat applicants — who are not a random slice of the book.
+
+So when `outcome_level: CUSTOMER`, discrimination is measured on one record per
+customer, collapsed with `runtime.multi_record_policy`. Both counts are
+reported (`APPLICATIONS_BEFORE_DEDUPE`, `UNITS_IN_METRIC`) and `METRICS_LEVEL`
+states which grain was used. Stability metrics are unaffected — they are
+application-level by construction.
+
+The flag can also arrive as its own file, which is how a bureau pull usually
+reaches you:
+
+```yaml
+outcome:
+  source:
+    path: data/offus_30plus_flag.csv
+    key_column: CUSTOMER_ID      # key in the outcome file
+    join_on: CUSTOMER_ID         # column in the application extract
+    columns: [OFFUS_30P_DPD]
+```
+
+The join is always a LEFT join. An application with no matching outcome row
+keeps a null flag and leaves the performance metrics; it is never dropped from
+the stability analysis and never defaulted to good. The match rate is logged,
+duplicate keys are de-duplicated rather than allowed to fan out the extract,
+and a match rate below 50% raises a warning — identifier format mismatches
+(leading zeros, prefixes, type coercion) are the usual cause and would
+otherwise quietly destroy the performance section.
+
 ### Right-censoring
 
 An account booked two months ago with no default yet is **not** a good

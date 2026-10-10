@@ -25,6 +25,7 @@ import pandas as pd
 
 from .config import DataSourceConfig, MonitoringConfig
 from .logging_config import ExecutionLog, get_logger
+from .utils import pct
 
 logger = get_logger("data_loader")
 
@@ -408,6 +409,138 @@ def _warn_on_memory(result: LoadResult, execution_log: Optional[ExecutionLog]) -
         execution_log.warning(message)
 
 
+def join_outcome_source(
+    frame: pd.DataFrame,
+    config: MonitoringConfig,
+    *,
+    execution_log: Optional[ExecutionLog] = None,
+) -> pd.DataFrame:
+    """Left-join a separately supplied outcome file onto the extract.
+
+    Bureau-derived flags usually arrive as their own file from a later pull --
+    one row per customer rather than a column already on the application
+    extract.  The join is always a LEFT join: an application with no matching
+    outcome row keeps a null flag and is excluded from performance metrics, it
+    is never dropped from the stability analysis and never defaulted to good.
+
+    Diagnostics that matter are logged rather than left to be discovered: the
+    match rate, duplicate keys in the outcome file (which would fan out the
+    extract), and keys present in the outcome file but absent from the extract.
+    """
+    source = config.outcome.source
+    if source is None or not source.enabled:
+        return frame
+
+    join_on = source.join_on or config.customer_column
+    key_column = source.key_column or join_on
+    if join_on not in frame.columns:
+        message = (
+            f"Outcome file cannot be joined: '{join_on}' is not in the extract. "
+            "Set outcome.source.join_on to a column that is."
+        )
+        logger.error(message)
+        if execution_log is not None:
+            execution_log.error(message)
+        raise DataLoadError(message)
+
+    path = Path(source.path).expanduser()
+    if not path.exists():
+        raise DataLoadError(f"Outcome file not found: {path}")
+
+    fmt = source.resolved_format()
+    wanted = None
+    if source.columns:
+        wanted = list(dict.fromkeys([key_column, *source.columns]))
+    try:
+        if fmt == "csv":
+            outcome = pd.read_csv(
+                path, sep=source.delimiter, encoding=source.encoding, usecols=wanted
+            )
+        elif fmt == "parquet":
+            outcome = pd.read_parquet(path, columns=wanted)
+        else:
+            outcome = pd.read_excel(path, sheet_name=source.sheet_name, usecols=wanted)
+            if isinstance(outcome, dict):
+                outcome = next(iter(outcome.values()))
+    except Exception as exc:
+        raise DataLoadError(f"Could not read the outcome file {path}: {exc}") from exc
+
+    if key_column not in outcome.columns:
+        raise DataLoadError(
+            f"Outcome file {path} has no key column '{key_column}'. Available: "
+            f"{list(outcome.columns)[:20]}"
+        )
+
+    # Duplicate keys would fan out the extract and silently multiply records.
+    duplicates = int(outcome[key_column].duplicated().sum())
+    if duplicates:
+        message = (
+            f"The outcome file has {duplicates:,} duplicated '{key_column}' value(s). Keeping "
+            "the first row per key to avoid fanning out the application extract; confirm the "
+            "file is one row per key."
+        )
+        logger.warning(message)
+        if execution_log is not None:
+            execution_log.warning(message)
+        outcome = outcome.drop_duplicates(subset=[key_column], keep="first")
+
+    overlapping = [
+        column for column in outcome.columns
+        if column != key_column and column in frame.columns
+    ]
+    if overlapping:
+        message = (
+            f"Outcome file column(s) {overlapping} already exist in the extract and are taken "
+            "from the outcome file."
+        )
+        logger.warning(message)
+        if execution_log is not None:
+            execution_log.warning(message)
+        frame = frame.drop(columns=overlapping)
+
+    before = len(frame)
+    merged = frame.merge(
+        outcome.rename(columns={key_column: join_on}), on=join_on, how="left"
+    )
+    if len(merged) != before:  # pragma: no cover - guarded by the de-duplication above
+        raise DataLoadError(
+            f"Joining the outcome file changed the row count from {before:,} to "
+            f"{len(merged):,}. The outcome file must be one row per '{key_column}'."
+        )
+
+    outcome_column = config.outcome.outcome_column
+    if outcome_column and outcome_column in merged.columns:
+        matched = int(merged[outcome_column].notna().sum())
+        rate = pct(matched, before, 0.0) or 0.0
+        message = (
+            f"Outcome file joined on '{join_on}': {matched:,} of {before:,} application(s) "
+            f"matched an outcome row ({rate:.1f}%). Unmatched applications keep a null flag and "
+            "are excluded from performance metrics, never counted as good."
+        )
+        logger.info(message)
+        if execution_log is not None:
+            execution_log.info(message)
+        if rate < 50.0:
+            warning = (
+                f"Only {rate:.1f}% of applications matched an outcome row. Check that "
+                f"'{join_on}' and '{key_column}' are the same identifier on the same format "
+                "(leading zeros, prefixes and type coercion are the usual culprits) before "
+                "reading any performance figure in this pack."
+            )
+            logger.warning(warning)
+            if execution_log is not None:
+                execution_log.warning(warning)
+    else:
+        message = (
+            f"The outcome file was joined but '{outcome_column}' is not among its columns; "
+            "performance metrics will remain unavailable."
+        )
+        logger.warning(message)
+        if execution_log is not None:
+            execution_log.warning(message)
+    return merged
+
+
 def iter_source_chunks(
     source: DataSourceConfig, columns: Optional[Sequence[str]] = None, chunksize: int = 250_000
 ) -> Iterable[pd.DataFrame]:
@@ -440,5 +573,5 @@ def iter_source_chunks(
 
 __all__ = [
     "DataLoadError", "LoadResult", "load_dataset", "peek_columns",
-    "optimise_dtypes", "iter_source_chunks",
+    "optimise_dtypes", "iter_source_chunks", "join_outcome_source",
 ]

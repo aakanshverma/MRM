@@ -75,6 +75,12 @@ SCENARIOS: List[Dict[str, str]] = [
     {"ID": "12", "SCENARIO": "Insufficient reference / monitoring observations",
      "WHERE": "MODEL_4 goes live 2025-07 with low volume",
      "EXPECT": "Reference adequacy alert; MODEL_4 stability metrics labelled GREY, not GREEN."},
+    {"ID": "13", "SCENARIO": "Off-us 30+ DPD outcome: customer-level, joined, with an "
+                             "indeterminate band",
+     "WHERE": "a separate bureau-style file keyed on CUSTOMER_ID",
+     "EXPECT": "Performance metrics computed on one record per customer; 1-29 DPD and no-hit "
+               "records excluded as indeterminate rather than counted as good; every figure "
+               "labelled OFF_US with the proxy caveat."},
 ]
 
 # Target reference-period segment shares (safest -> riskiest).
@@ -132,10 +138,16 @@ def _inject_missing(
 # ---------------------------------------------------------------------------
 
 
-def generate_synthetic_dataset(
+def _build(
     config: Optional[GeneratorConfig] = None, **overrides: Any
-) -> pd.DataFrame:
-    """Build the synthetic customer-level scorecard extract."""
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Build the extract and its companion customer-level off-us outcome file.
+
+    Returns ``(applications, offus_flag)``.  The two are returned separately
+    rather than the flag being smuggled through ``DataFrame.attrs``: pandas
+    compares ``attrs`` for equality when finalising a merge or concat, so a
+    DataFrame stored there raises "truth value is ambiguous" on the next join.
+    """
     settings = config or GeneratorConfig()
     for key, value in overrides.items():
         setattr(settings, key, value)
@@ -405,6 +417,34 @@ def generate_synthetic_dataset(
     frame["EXPECTED_PD"] = np.round(np.clip(expected, 0.0005, 0.95), 5)
 
     # ==================================================================
+    # Scenario 13 -- off-us 30+ DPD, at CUSTOMER level
+    # ==================================================================
+    # Bureau-observed delinquency on other lenders' accounts. Modelled the way
+    # it actually arrives: one flag per customer (not per application), with a
+    # 1-29 DPD indeterminate band and a no-hit / thin-file population that must
+    # NOT be read as "current".
+    customer_count = n_customers
+    customer_risk = np.zeros(customer_count, dtype="float64")
+    customer_seen = np.zeros(customer_count, dtype="int64")
+    np.add.at(customer_risk, customer_index, blended)
+    np.add.at(customer_seen, customer_index, 1)
+    customer_mean = np.divide(
+        customer_risk, np.maximum(customer_seen, 1),
+        out=np.zeros_like(customer_risk), where=customer_seen > 0,
+    )
+    offus_probability = 1.0 / (1.0 + np.exp(-(-1.9 + 0.60 * customer_mean)))
+    draw = rng.random(customer_count)
+    customer_flag = np.where(draw < offus_probability, "1", "0").astype(object)
+    # a 1-29 DPD band, more common among riskier customers
+    indeterminate = (draw >= offus_probability) & (
+        rng.random(customer_count) < 0.08 + 0.05 * (customer_mean > 0)
+    )
+    customer_flag[indeterminate] = "INDET_1_29_DPD"
+    # thin-file customers with no bureau trade line at all
+    customer_flag[rng.random(customer_count) < 0.07] = "NO_HIT"
+    offus_flag = customer_flag[customer_index]
+
+    # ==================================================================
     # Scenario 11 -- duplicate records
     # ==================================================================
     n_duplicates = max(1, int(n * settings.duplicate_lan_share))
@@ -430,7 +470,36 @@ def generate_synthetic_dataset(
     ordered.extend(["DEFAULT_FLAG", "PERFORMANCE_MATURED", "EXPECTED_PD"])
     ordered = [c for c in ordered if c in frame.columns]
     remaining = [c for c in frame.columns if c not in ordered]
-    return frame[ordered + remaining]
+    # The off-us flag is deliberately NOT a column on the application extract:
+    # it is returned separately, the way a bureau pull actually arrives, so the
+    # outcome-file join path is exercised rather than assumed.
+    offus = pd.DataFrame({
+        "CUSTOMER_ID": [f"CUST{idx:07d}" for idx in range(customer_count)],
+        "OFFUS_30P_DPD": customer_flag,
+        "BUREAU_PULL_DATE": settings.end_date.isoformat(),
+    })
+    return frame[ordered + remaining], offus
+
+
+def generate_synthetic_dataset(
+    config: Optional[GeneratorConfig] = None, **overrides: Any
+) -> pd.DataFrame:
+    """Build the synthetic customer-level scorecard extract."""
+    return _build(config, **overrides)[0]
+
+
+def generate_synthetic_outcome(
+    config: Optional[GeneratorConfig] = None, **overrides: Any
+) -> pd.DataFrame:
+    """The companion customer-level off-us 30+ DPD file for the same seed."""
+    return _build(config, **overrides)[1]
+
+
+def generate_synthetic_dataset_with_outcome(
+    config: Optional[GeneratorConfig] = None, **overrides: Any
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """``(applications, off-us 30+ DPD per customer)`` from one generation pass."""
+    return _build(config, **overrides)
 
 
 def scenario_frame() -> pd.DataFrame:
@@ -456,6 +525,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--start", default="2024-01-01")
     parser.add_argument("--end", default="2026-09-20",
                         help="deliberately mid-quarter so the last quarter is incomplete")
+    parser.add_argument(
+        "--outcome-out", default="data/offus_30plus_flag.csv",
+        help="where to write the companion customer-level off-us 30+ DPD file",
+    )
     arguments = parser.parse_args(argv)
 
     settings = GeneratorConfig(
@@ -464,7 +537,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         start_date=datetime.strptime(arguments.start, "%Y-%m-%d").date(),
         end_date=datetime.strptime(arguments.end, "%Y-%m-%d").date(),
     )
-    frame = generate_synthetic_dataset(settings)
+    frame, outcome = generate_synthetic_dataset_with_outcome(settings)
     out = Path(arguments.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     if out.suffix.lower() in {".parquet", ".pq"}:
@@ -472,8 +545,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     else:
         frame.to_csv(out, index=False)
 
+    outcome_path = Path(arguments.outcome_out)
+    outcome_path.parent.mkdir(parents=True, exist_ok=True)
+    outcome.to_csv(outcome_path, index=False)
+
     print(f"Wrote {len(frame):,} rows x {frame.shape[1]} columns to {out}")
     print(f"Date span: {frame['LOGIN_DATE'].min()} to {frame['LOGIN_DATE'].max()}")
+    print(
+        f"Wrote the companion off-us 30+ DPD file ({len(outcome):,} customers) to "
+        f"{outcome_path}"
+    )
+    print("  off-us flag distribution: " + ", ".join(
+        f"{k}={v:,}" for k, v in outcome["OFFUS_30P_DPD"].value_counts().items()
+    ))
     print("\nSegment distribution by model:")
     for model in ("MODEL_1", "MODEL_2", "MODEL_3", "MODEL_4"):
         column = f"{model}_SEGMENT"
@@ -490,5 +574,6 @@ if __name__ == "__main__":  # pragma: no cover
 
 
 __all__ = [
-    "GeneratorConfig", "generate_synthetic_dataset", "scenario_frame", "SCENARIOS", "main",
+    "GeneratorConfig", "generate_synthetic_dataset", "generate_synthetic_outcome",
+    "generate_synthetic_dataset_with_outcome", "scenario_frame", "SCENARIOS", "main",
 ]

@@ -143,6 +143,36 @@ not a probability and is never substituted for one. The z-test assumes
 independent outcomes, so correlated defaults (a regional shock, a common
 exposure) will overstate its significance.
 
+**20a. An off-us outcome is a proxy for the development target.**
+Bureau-observed delinquency on other lenders' accounts covers the full
+through-the-door population, declines included, so rank ordering measured on it
+avoids accept-only selection bias — its main advantage. But it is almost never
+the target the scorecard was fitted on, so its Gini and KS are proxy measures
+and are not comparable with development-time figures or with on-us performance.
+Gini floors must be set for the definition in use; a 30+ DPD off-us target is
+milder than on-us 90+ default and typically yields a lower Gini.
+
+**20b. An on-us PD cannot be validated against an off-us target.**
+Calibration compares observed outcomes with a model-estimated probability. A PD
+calibrated to on-us default is not an estimate of other lenders' delinquency,
+so the pack reports calibration as NOT AVAILABLE unless an expected PD matching
+the outcome definition is supplied.
+
+**20c. The indeterminate band is excluded, not reclassified.**
+Records 1–29 days past due, and records with no bureau trade line, are excluded
+from every performance metric and counted separately. The pipeline warns when
+an off-us outcome declares no indeterminate values, but it cannot detect a
+no-hit population encoded as a good (`0`). If that is how the extract is built,
+the bad rate is understated and every discrimination metric here is flattered —
+confirm the encoding with whoever supplies the flag.
+
+**20d. Customer-level flags are de-duplicated for discrimination.**
+Where one flag covers a customer's several applications, AUC and KS are
+computed on one record per customer, because the repeated rows are perfectly
+correlated by construction and would inflate the effective sample size.
+Repeat applicants are not a random slice of the book, so the metric describes
+the customers in the quarter rather than the applications.
+
 **21. The bad definition is taken as given.**
 `bad_values` and `good_values` are applied as configured. A changed bad
 definition mid-series will move every performance metric, and the pipeline

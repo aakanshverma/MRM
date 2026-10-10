@@ -47,7 +47,7 @@ from .config import (
     save_config,
 )
 from .csi_calculator import compute_csi
-from .data_loader import DataLoadError, LoadResult, load_dataset
+from .data_loader import DataLoadError, LoadResult, join_outcome_source, load_dataset
 from .data_validation import (
     ValidationError,
     prepare_frame,
@@ -304,11 +304,13 @@ def _maybe_generate_synthetic(
     """Generate the synthetic extract when requested."""
     if arguments.generate_synthetic is None:
         return None
-    from .synthetic_data import GeneratorConfig, generate_synthetic_dataset
+    from .synthetic_data import GeneratorConfig, generate_synthetic_dataset_with_outcome
 
     rows = int(arguments.generate_synthetic)
     logger.info("Generating a synthetic extract of %s rows for this run.", f"{rows:,}")
-    frame = generate_synthetic_dataset(GeneratorConfig(n_rows=rows, seed=config.runtime.random_seed))
+    frame, outcome = generate_synthetic_dataset_with_outcome(
+        GeneratorConfig(n_rows=rows, seed=config.runtime.random_seed)
+    )
     target = Path(config.data_source.path or "data/synthetic_scorecard_data.csv")
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -316,6 +318,21 @@ def _maybe_generate_synthetic(
         logger.info("Synthetic extract written to %s", target)
     except Exception as exc:  # pragma: no cover - a failed save must not stop the run
         logger.warning("Could not persist the synthetic extract (%s); continuing in memory.", exc)
+
+    # Where the configuration expects a joined outcome file, write the matching
+    # companion so --generate-synthetic produces a runnable pair.
+    source = config.outcome.source
+    if source is not None and source.enabled:
+        outcome_path = Path(source.path)
+        try:
+            outcome_path.parent.mkdir(parents=True, exist_ok=True)
+            outcome.to_csv(outcome_path, index=False)
+            logger.info(
+                "Companion customer-level outcome file written to %s (%s customers).",
+                outcome_path, f"{len(outcome):,}",
+            )
+        except Exception as exc:  # pragma: no cover
+            logger.warning("Could not persist the synthetic outcome file (%s).", exc)
     return frame
 
 
@@ -378,7 +395,14 @@ def run_pipeline(
 
     # ---- 3. prepare ---------------------------------------------------
     execution_log.set_stage("PREPARE")
-    prepared = prepare_frame(load_result.frame, config, execution_log=execution_log)
+    frame_to_prepare = load_result.frame
+    if config.outcome.source is not None and config.outcome.source.enabled:
+        frame_to_prepare = join_outcome_source(
+            frame_to_prepare, config, execution_log=execution_log
+        )
+        load_result.frame = frame_to_prepare
+        load_result.columns_loaded = [str(c) for c in frame_to_prepare.columns]
+    prepared = prepare_frame(frame_to_prepare, config, execution_log=execution_log)
     kind_hints = infer_dtype_hints(prepared)
 
     # ---- 4. reference periods (prompting if needed) --------------------

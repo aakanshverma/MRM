@@ -200,6 +200,54 @@ Default bands (conventional industry guidelines, fully configurable):
 | CSI | < 0.10 | 0.10 – 0.25 | >= 0.25 |
 | CSI (business-critical) | < 0.05 | 0.05 – 0.15 | >= 0.15 |
 
+### Outcome flags: on-us vs off-us
+
+An outcome flag unlocks the performance half of the pack — bad rate by segment,
+rank ordering, Gini/KS, lift, cumulative bad capture. Three fields decide
+whether those numbers mean what a reader will assume:
+
+```yaml
+outcome:
+  outcome_column: OFFUS_30P_DPD
+  definition_label: "Off-us 30+ DPD ever within 12 months of login (bureau)"
+  definition_basis: OFF_US        # ON_US | OFF_US | COMBINED
+  outcome_level: CUSTOMER         # one flag per customer, not per application
+  indeterminate_values: [INDET_1_29_DPD, NO_HIT, THIN_FILE]
+  source:                         # the flag arrives as its own bureau file
+    path: data/offus_30plus_flag.csv
+    key_column: CUSTOMER_ID
+```
+
+A worked template is at [`config/config.offus_30plus.yaml`](config/config.offus_30plus.yaml):
+
+```bash
+python main.py --config config/config.offus_30plus.yaml --non-interactive
+```
+
+**Off-us is a proxy with a real advantage.** Bureau-observed delinquency on
+other lenders' accounts covers the full through-the-door population, declines
+included, so rank ordering measured on it is free of the accept-only selection
+bias that limits on-book monitoring. But it is almost never the target the
+scorecard was developed on, so its Gini and KS are proxy measures — not
+comparable with development figures, and needing their own thresholds (a 30+
+off-us target is milder than on-us 90+ default and typically scores lower).
+The caveat travels with every figure that depends on it.
+
+**The indeterminate band matters more than it looks.** 1–29 DPD is delinquent
+but not bad; a customer with no bureau trade line is unknown, not current. Both
+are excluded and counted, never merged into the good population. If a no-hit
+code is encoded as `0` and `0` sits in `good_values`, those customers silently
+become good — the bad rate is understated and every discrimination metric is
+flattered. The pipeline warns when an off-us outcome declares no indeterminate
+values, but it cannot spot a no-hit code disguised as a zero.
+
+**Customer-level flags are de-duplicated.** One flag repeated across a
+customer's three applications is one observation, not three: leaving the copies
+in inflates the effective sample behind AUC and KS and over-weights repeat
+applicants. Discrimination is computed on one record per customer (via
+`runtime.multi_record_policy`), with both counts reported. Stability metrics are
+unaffected.
+
 ### Stability is not performance
 
 The framework keeps two questions apart and says so on the sheets:
@@ -272,9 +320,9 @@ model_monitoring/
 ├── synthetic_data.py       scenario-planting data generator
 └── utils.py                quarters, safe maths, dtype probing
 
-config/     config.sample.yaml, config.sample.json
+config/     config.sample.yaml, config.sample.json, config.offus_30plus.yaml
 docs/       METRICS.md, ASSUMPTIONS_AND_LIMITATIONS.md, TROUBLESHOOTING.md
-tests/      218 tests across 9 modules
+tests/      243 tests across 10 modules
 output/     generated workbooks; output/sample/ holds a committed example
 main.py     root entry point, so `python main.py` works
 ```
@@ -376,7 +424,7 @@ models:
 ## Testing
 
 ```bash
-python -m pytest -q                    # 218 tests
+python -m pytest -q                    # 243 tests
 python -m pytest tests/test_psi.py -v  # one module
 ```
 
@@ -387,12 +435,13 @@ threshold evaluation, model-specific reference periods, correct migration
 denominators, stability monitoring surviving a missing outcome, expected Excel
 sheets and columns), and runs the CLI end to end.
 
-The synthetic generator plants twelve specific conditions — a stable model, a
+The synthetic generator plants thirteen specific conditions — a stable model, a
 drifting model, a zero-count grade, missing and invalid grades, missing
 features, an unseen category, four different reference windows, an incomplete
 quarter, a high-CSI characteristic, customer upgrades and downgrades,
-duplicates, and a scorecard with too little data — so a run exercises the real
-code paths rather than a happy path.
+duplicates, a scorecard with too little data, and a customer-level off-us 30+
+DPD outcome delivered as a separate bureau file with an indeterminate band — so
+a run exercises the real code paths rather than a happy path.
 
 ## Documentation
 

@@ -28,8 +28,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
-from .config import MonitoringConfig, Severity
+from .config import MonitoringConfig, MultiRecordPolicy, OutcomeLevel, Severity
 from .data_validation import (
+    INDETERMINATE_COLUMN,
     MATURITY_COLUMN,
     OUTCOME_COLUMN,
     QUARTER_COLUMN,
@@ -51,8 +52,11 @@ except ImportError:  # pragma: no cover - environment dependent
 
 
 PERFORMANCE_SUMMARY_COLUMNS = [
-    "MODEL", "QUARTER", "SCORE_SOURCE", "SCORE_DIRECTION", "OBSERVATION_WINDOW_MONTHS",
-    "TOTAL_RECORDS", "RECORDS_WITH_OUTCOME", "MATURED_RECORDS", "IMMATURE_EXCLUDED",
+    "MODEL", "QUARTER", "OUTCOME_DEFINITION", "OUTCOME_BASIS", "OUTCOME_LEVEL",
+    "METRICS_LEVEL", "SCORE_SOURCE", "SCORE_DIRECTION", "OBSERVATION_WINDOW_MONTHS",
+    "TOTAL_RECORDS", "RECORDS_WITH_OUTCOME", "INDETERMINATE_EXCLUDED",
+    "UNKNOWN_EXCLUDED", "MATURED_RECORDS", "IMMATURE_EXCLUDED",
+    "APPLICATIONS_BEFORE_DEDUPE", "UNITS_IN_METRIC",
     "MATURITY_PCT", "COHORT_COMPLETE", "BAD_COUNT", "GOOD_COUNT",
     "EVENT_RATE_PCT", "NON_EVENT_RATE_PCT", "AUC", "GINI", "KS_STATISTIC",
     "KS_SEGMENT", "LIFT_TOP_SEGMENT", "BAD_CAPTURE_TOP_2_SEGMENTS_PCT",
@@ -216,6 +220,18 @@ def availability_frame(config: MonitoringConfig, frame: Optional[pd.DataFrame] =
         }
 
     rows = [
+        row(
+            "Outcome definition in use", has_outcome, "outcome.outcome_column",
+            (
+                outcome.describe()
+                + (" " + outcome.proxy_caveat() if outcome.is_off_us else "")
+            ) if has_outcome else (
+                "No outcome flag is configured, so this pack reports model STABILITY only. "
+                "Supply outcome.outcome_column -- together with definition_basis (ON_US / "
+                "OFF_US), definition_label, indeterminate_values and outcome_level -- to enable "
+                "bad rates, rank ordering and discrimination measures."
+            ),
+        ),
         row("Event rate / non-event rate", has_outcome, "outcome.outcome_column",
             "Requires a binary good/bad (or default/delinquency) flag per application."),
         row("Bad rate by segment", has_outcome, "outcome.outcome_column",
@@ -344,6 +360,12 @@ def _quarter_performance(
     total = int(len(subset))
 
     with_outcome = subset[subset[OUTCOME_COLUMN].notna()]
+    indeterminate_excluded = (
+        int(subset[INDETERMINATE_COLUMN].sum()) if INDETERMINATE_COLUMN in subset.columns else 0
+    )
+    unknown_excluded = max(
+        0, total - int(len(with_outcome)) - indeterminate_excluded
+    )
     if outcome_cfg.exclude_immature and MATURITY_COLUMN in subset.columns:
         matured = with_outcome[with_outcome[MATURITY_COLUMN] == True]  # noqa: E712
     else:
@@ -352,17 +374,28 @@ def _quarter_performance(
     maturity = pct(len(matured), total)
     cohort_complete = bool(maturity is not None and maturity >= 99.0)
 
+    applications_before_dedupe = int(len(matured))
+    matured, unit = _collapse_to_metric_unit(matured, config, rank_column)
+
     row: Dict[str, Any] = {column: None for column in PERFORMANCE_SUMMARY_COLUMNS}
     row.update({
         "MODEL": model.name,
         "QUARTER": quarter.label,
+        "OUTCOME_DEFINITION": outcome_cfg.describe(),
+        "OUTCOME_BASIS": outcome_cfg.definition_basis.value,
+        "OUTCOME_LEVEL": outcome_cfg.outcome_level.value,
+        "METRICS_LEVEL": unit,
         "SCORE_SOURCE": score_source,
         "SCORE_DIRECTION": "HIGHER = RISKIER" if higher_is_riskier else "HIGHER = SAFER",
         "OBSERVATION_WINDOW_MONTHS": outcome_cfg.observation_window_months,
         "TOTAL_RECORDS": total,
         "RECORDS_WITH_OUTCOME": int(len(with_outcome)),
+        "INDETERMINATE_EXCLUDED": indeterminate_excluded,
+        "UNKNOWN_EXCLUDED": unknown_excluded,
         "MATURED_RECORDS": int(len(matured)),
         "IMMATURE_EXCLUDED": immature_excluded,
+        "APPLICATIONS_BEFORE_DEDUPE": applications_before_dedupe,
+        "UNITS_IN_METRIC": int(len(matured)),
         "MATURITY_PCT": round_or_none(maturity, 2),
         "COHORT_COMPLETE": cohort_complete,
         "RANK_ORDERING": f"{NOT_AVAILABLE} - insufficient matured outcomes",
@@ -377,6 +410,8 @@ def _quarter_performance(
             "from this quarter cannot yet be classified good or bad. They are NOT counted as "
             "good."
         )
+        row["APPLICATIONS_BEFORE_DEDUPE"] = 0
+        row["UNITS_IN_METRIC"] = 0
         return row, []
 
     labels = matured[OUTCOME_COLUMN].to_numpy(dtype="float64")
@@ -459,11 +494,12 @@ def _quarter_performance(
     if not enough:
         row["PERFORMANCE_SEVERITY"] = Severity.GREY.value
         row["PERFORMANCE_STATUS"] = (
-            f"Metrics computed on {len(matured):,} matured record(s) with {bad_count:,} bad(s), "
-            f"below the configured minimums (min_outcome_records="
+            f"Metrics computed on {len(matured):,} matured {unit.lower()}(s) with "
+            f"{bad_count:,} bad(s), below the configured minimums (min_outcome_records="
             f"{thresholds.min_outcome_records:,}, min_bad_count={thresholds.min_bad_count:,}). "
-            "Treat the discrimination statistics as indicative only."
-        )
+            "Treat the discrimination statistics as indicative only. "
+            + outcome_cfg.proxy_caveat()
+        ).strip()
     else:
         severity = thresholds.classify_gini(gini)
         row["PERFORMANCE_SEVERITY"] = severity.value
@@ -485,12 +521,69 @@ def _quarter_performance(
                 "No continuous score was available, so the ordinal segment rank was used; with "
                 f"{segments.n_segments} ties-heavy grades the AUC is a conservative lower bound."
             )
+        if unit == "CUSTOMER" and applications_before_dedupe > len(matured):
+            parts.append(
+                f"The flag is customer-level, so {applications_before_dedupe:,} matured "
+                f"application(s) were de-duplicated to {len(matured):,} customer(s) "
+                f"(policy {config.runtime.multi_record_policy.value}) before measuring "
+                "discrimination."
+            )
+        if indeterminate_excluded:
+            parts.append(
+                f"{indeterminate_excluded:,} record(s) carry an indeterminate outcome and are "
+                "excluded from every figure here rather than counted as good."
+            )
+        caveat = outcome_cfg.proxy_caveat()
+        if caveat:
+            parts.append(caveat)
         row["PERFORMANCE_STATUS"] = " ".join(parts)
     if breaks:
         row["PERFORMANCE_STATUS"] = (row["PERFORMANCE_STATUS"] or "") + (
             f" Rank-order break(s) at: {', '.join(breaks)}."
         )
     return row, segment_rows
+
+
+def _collapse_to_metric_unit(
+    matured: pd.DataFrame, config: MonitoringConfig, rank_column: str
+) -> Tuple[pd.DataFrame, str]:
+    """Reduce to one row per customer when the outcome is customer-level.
+
+    A customer-level flag repeated across that customer's three applications is
+    one observation, not three.  Leaving the duplicates in inflates the
+    effective sample size behind AUC and KS (the observations are perfectly
+    correlated by construction) and silently over-weights repeat applicants,
+    who are not a random slice of the book.
+    """
+    outcome_cfg = config.outcome
+    if outcome_cfg.metrics_level is not OutcomeLevel.CUSTOMER:
+        return matured, "APPLICATION"
+    customer_column = config.customer_column
+    if customer_column not in matured.columns:
+        return matured, "APPLICATION"
+
+    policy = config.runtime.multi_record_policy
+    frame = matured
+    if policy is MultiRecordPolicy.DROP:
+        counts = frame[customer_column].value_counts()
+        frame = frame[frame[customer_column].isin(counts[counts == 1].index)]
+    elif policy in (MultiRecordPolicy.LATEST, MultiRecordPolicy.EARLIEST):
+        if config.date_column in frame.columns:
+            frame = frame.sort_values(
+                config.date_column, ascending=policy is MultiRecordPolicy.EARLIEST
+            )
+        frame = frame.drop_duplicates(subset=[customer_column], keep="first")
+    elif policy is MultiRecordPolicy.WORST and rank_column in frame.columns:
+        frame = frame.sort_values(rank_column, ascending=False).drop_duplicates(
+            subset=[customer_column], keep="first"
+        )
+    elif policy is MultiRecordPolicy.BEST and rank_column in frame.columns:
+        frame = frame.sort_values(rank_column, ascending=True).drop_duplicates(
+            subset=[customer_column], keep="first"
+        )
+    else:
+        frame = frame.drop_duplicates(subset=[customer_column], keep="first")
+    return frame, "CUSTOMER"
 
 
 def _segment_for_rank(rank_value: float, segments) -> Optional[str]:

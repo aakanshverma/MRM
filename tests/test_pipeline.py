@@ -249,7 +249,7 @@ def test_synthetic_generator_is_reproducible():
 
 def test_scenario_manifest_matches_the_documented_list():
     table = scenario_frame()
-    assert len(table) == len(SCENARIOS) == 12
+    assert len(table) == len(SCENARIOS) == 13
     assert list(table.columns) == ["ID", "SCENARIO", "WHERE", "EXPECT"]
 
 

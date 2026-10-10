@@ -236,6 +236,59 @@ Either no `outcome.outcome_column` is configured, or no cohort has matured. The
 Check `MATURITY_PCT`: with a 12-month window, applications from the last four
 quarters cannot have matured.
 
+### Bad rates look too low across the board (off-us flag)
+
+Almost always the no-information population being counted as good. Check
+`INDETERMINATE_EXCLUDED` on the `09 Outcome Performance` sheet: if it is zero
+while the bureau flag has a thin-file or no-hit code, those customers are
+sitting in `good_values`. Declare them:
+
+```yaml
+outcome:
+  indeterminate_values: [NO_HIT, THIN_FILE, NOT_FOUND, INDET_1_29_DPD]
+```
+
+The pipeline warns when an `OFF_US` outcome declares no indeterminate values,
+but it cannot spot a no-hit population encoded as `0`.
+
+### Gini looks poor on an off-us target
+
+Expected to a degree, and usually not a broken model. An off-us 30+ DPD target
+is a milder bad definition measured on a different population than on-us 90+
+default, so it yields a lower Gini. Reusing on-us floors will flag healthy
+scorecards. Set them for the definition in use:
+
+```yaml
+thresholds:
+  min_gini_amber: 0.22
+  min_gini_red: 0.14
+```
+
+`config/config.offus_30plus.yaml` is a worked template.
+
+### The outcome join matched almost nothing
+
+The run warns when the match rate is below 50%. Identifier formats are the
+usual cause — leading zeros stripped by a CSV round-trip, a prefix on one side,
+or an integer/string mismatch:
+
+```python
+import pandas as pd
+left = pd.read_csv("extract.csv", dtype={"CUSTOMER_ID": "string"})
+right = pd.read_csv("offus_flag.csv", dtype={"CUSTOMER_ID": "string"})
+print(left.CUSTOMER_ID.head().tolist(), right.CUSTOMER_ID.head().tolist())
+print("overlap:", len(set(left.CUSTOMER_ID) & set(right.CUSTOMER_ID)))
+```
+
+Unmatched applications keep a null flag and leave the performance metrics; they
+are never dropped from the stability analysis and never counted as good.
+
+### "Truth value of a DataFrame is ambiguous" during a merge
+
+Something has put a DataFrame into `DataFrame.attrs`. Pandas compares `attrs`
+for equality when finalising a merge or concat, so any later join raises this.
+Pass frames explicitly instead of smuggling them through `attrs`.
+
 ### Bad rates look too good in recent quarters
 
 Right-censoring. Check `COHORT_COMPLETE` — a false value means the bad rate is a
@@ -278,7 +331,7 @@ Useful switches:
 python main.py --log-level DEBUG                       # verbose logging
 python main.py --save-effective-config out/eff.json    # the resolved config
 python main.py --generate-synthetic 5000 --output /tmp # known-good smoke test
-python -m pytest -q                                    # 218 tests
+python -m pytest -q                                    # 243 tests
 ```
 
 Every run also writes `output/monitoring_run.log` and surfaces warnings on the

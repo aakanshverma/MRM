@@ -1,0 +1,308 @@
+# =============================================================================
+# Credit Risk Scorecard Monitoring - OFF-US 30+ DPD outcome configuration
+# =============================================================================
+# Everything that encodes a business rule lives here. Adding a fifth scorecard,
+# changing the risk direction, re-pointing a reference period or tightening a
+# threshold is a configuration change, never a code change.
+#
+# Run with:  python main.py --config config/config.offus_30plus.yaml
+# =============================================================================
+
+report_title: "Credit Risk Scorecard Monitoring Report"
+entity_name: "Example NBFC Limited - Risk Analytics (off-us 30+ DPD outcome)"
+framework_version: "1.0.0"
+prepared_by: "Model Validation Unit"
+
+# ---------------------------------------------------------------------------
+# Common columns
+# ---------------------------------------------------------------------------
+lan_column: LAN_ID
+customer_column: CUSTOMER_ID
+date_column: LOGIN_DATE
+extra_columns: [PRODUCT, CHANNEL, BRANCH_STATE]
+
+# ---------------------------------------------------------------------------
+# Input
+# ---------------------------------------------------------------------------
+data_source:
+  path: data/synthetic_scorecard_data.csv
+  fmt: auto                 # auto | csv | excel | parquet
+  prune_columns: true       # load only the columns this configuration needs
+  optimise_dtypes: true
+  # chunksize: 250000       # stream very large CSVs
+
+# ---------------------------------------------------------------------------
+# Risk grades
+# ---------------------------------------------------------------------------
+segments:
+  segment_order: ["CAT A", "CAT B", "CAT C1", "CAT C2", "CAT D", "CAT E"]
+  # A_TO_E_INCREASING: CAT A safest, CAT E riskiest.
+  # A_TO_E_DECREASING: reverse. Upgrades/downgrades, the riskier-grade share
+  # and the Excel colour ramp all follow this setting.
+  risk_direction: A_TO_E_INCREASING
+  riskier_segment_count: 2    # "riskier-grade share" = the 2 riskiest grades
+  missing_label: MISSING
+  invalid_label: INVALID
+
+# ---------------------------------------------------------------------------
+# Zero-frequency treatment for PSI/CSI
+# ---------------------------------------------------------------------------
+smoothing:
+  method: PSEUDOCOUNT        # PSEUDOCOUNT | DROP_EMPTY_BINS
+  pseudocount: 0.5           # Jeffreys prior; 1.0 would be Laplace
+  tolerance: 1.0e-9          # contribution-sum assertion tolerance
+
+# ---------------------------------------------------------------------------
+# Thresholds (conventional monitoring guidelines - override per policy)
+# ---------------------------------------------------------------------------
+thresholds:
+  psi:          {amber: 0.10, red: 0.25}
+  csi:          {amber: 0.10, red: 0.25}
+  csi_critical: {amber: 0.05, red: 0.15}   # characteristics flagged critical
+  csi_variable_overrides:
+    MODEL_1_VARIABLE_1: {amber: 0.05, red: 0.12}   # bureau score: watched closely
+
+  min_reference_records: 500
+  min_monitoring_records: 200
+  min_variable_records: 100
+
+  missingness_increase_pp:   {amber: 5.0,  red: 10.0}
+  missingness_level_pct:     {amber: 20.0, red: 50.0}
+  unseen_category_rate_pct:  {amber: 1.0,  red: 5.0}
+  duplicate_rate_pct:        {amber: 1.0,  red: 5.0}
+  invalid_segment_rate_pct:  {amber: 0.5,  red: 2.0}
+  missing_segment_rate_pct:  {amber: 2.0,  red: 5.0}
+  record_count_change_pct:   {amber: 30.0, red: 50.0}
+  concentration_pct:         {amber: 50.0, red: 70.0}
+  net_downgrade_pp:          {amber: 5.0,  red: 10.0}
+  riskier_share_increase_pp: {amber: 5.0,  red: 10.0}
+
+  # Set for an OFF-US 30+ DPD target, which is a milder bad definition than
+  # on-us 90+ default and measures a different population, so it typically
+  # yields a lower Gini. Do NOT reuse the floors agreed for an on-us default
+  # definition -- agree these with model governance for this target.
+  min_gini_amber: 0.22
+  min_gini_red: 0.14
+  min_outcome_records: 300
+  min_bad_count: 30
+
+# ---------------------------------------------------------------------------
+# Outcome: OFF-US 30+ DPD, supplied at CUSTOMER level in a separate file
+# ---------------------------------------------------------------------------
+# This is the shape a bureau-derived flag normally arrives in: one row per
+# customer from a later bureau pull, not a column already on the application
+# extract. Three settings decide whether the resulting numbers mean what a
+# reader will assume they mean -- definition_basis, indeterminate_values and
+# outcome_level. Get them wrong and the pack is confidently misleading.
+outcome:
+  outcome_column: OFFUS_30P_DPD
+  definition_label: "Off-us 30+ DPD ever within 12 months of login (bureau trade lines)"
+
+  # OFF_US: bureau-observed delinquency on OTHER lenders' accounts.
+  #   + covers the full through-the-door population, declines included, so rank
+  #     ordering here is free of accept-only selection bias
+  #   - is not the scorecard's development target, so Gini/KS are PROXY
+  #     measures and are not comparable with development-time figures
+  definition_basis: OFF_US
+
+  # One flag per customer, repeated across that customer's applications.
+  # Discrimination is therefore measured on one record per customer: three
+  # perfectly correlated copies of one flag are one observation, not three.
+  outcome_level: CUSTOMER
+  # metrics_level: CUSTOMER        # derived automatically from outcome_level
+
+  bad_values:  [1, "1", "Y", "30+", "30PLUS"]
+  good_values: [0, "0", "N", "CURRENT"]
+
+  # The middle band and the no-information population. Neither is a good.
+  # Leaving a thin-file code out of this list is the single most damaging
+  # mistake available here: it silently becomes a good customer, understating
+  # the bad rate and flattering every discrimination metric in the pack.
+  indeterminate_values:
+    - INDET_1_29_DPD      # 1-29 DPD: delinquent but not 30+
+    - NO_HIT              # no bureau trade line -- unknown, not current
+    - THIN_FILE
+    - NOT_FOUND
+
+  # 30+ DPD surfaces faster than a 90+ default definition, so a 12-month
+  # window is usually enough; shorten it only with the model owner's agreement.
+  observation_window_months: 12
+  exclude_immature: true          # never count an unmatured account as good
+  outcome_as_of: "2026-09-20"     # the BUREAU PULL date, not today
+
+  # Join the flag on from its own file.
+  source:
+    path: data/offus_30plus_flag.csv
+    key_column: CUSTOMER_ID       # key in the outcome file
+    join_on: CUSTOMER_ID          # column in the application extract
+    columns: [OFFUS_30P_DPD]
+
+  # No expected PD against an off-us target: a PD calibrated to on-us default
+  # cannot be validated against other lenders' delinquency. Left unset so the
+  # pack reports calibration as NOT AVAILABLE rather than comparing two
+  # different things.
+  # pd_column: EXPECTED_PD
+
+# ---------------------------------------------------------------------------
+# Runtime
+# ---------------------------------------------------------------------------
+runtime:
+  include_partial_quarters: false   # incomplete quarters are flagged, not monitored
+  min_quarter_records: 30
+  multi_record_policy: LATEST       # LATEST | EARLIEST | WORST | BEST | DROP
+  csi_variable_batch_size: 50
+  csi_variable_whitelist: []        # [] = every monitored characteristic
+  csi_top_n: 25                     # executive views only; detail stays complete
+  csi_include_qoq: true
+  # MODEL_OUTPUT: measure each scorecard's characteristics on the records it
+  # actually scored (right denominator for a model covering part of the book).
+  # ALL_RECORDS: unscored applications land in the MISSING bin and move CSI.
+  csi_scope: MODEL_OUTPUT
+  default_numeric_bins: 10
+  rare_category_min_share: 0.01
+  psi_include_missing_segment: false
+  alert_include_green: true
+  display_decimals: 4
+  non_interactive: false
+  log_level: INFO
+
+# ---------------------------------------------------------------------------
+# Excel output
+# ---------------------------------------------------------------------------
+excel:
+  output_dir: output
+  filename_template: "Scorecard_Monitoring_Report_{timestamp}.xlsx"
+  top_n: 25
+  max_rows_per_sheet: 200000
+  use_excel_tables: true
+  excel_table_row_limit: 50000
+  include_charts: true
+  conditional_formatting_row_limit: 50000
+  freeze_panes: true
+  autofilter: true
+
+# ---------------------------------------------------------------------------
+# Scorecards
+# ---------------------------------------------------------------------------
+# Each scorecard owns its segment column, its characteristics AND its reference
+# period. The four windows below differ deliberately: the scorecards were
+# developed, implemented and retrained at different times.
+models:
+  MODEL_1:
+    segment_column: MODEL_1_SEGMENT
+    score_column: MODEL_1_TOTAL_SCORE
+    description: "Unsecured personal loan application scorecard"
+    owner: "Retail Risk - Unsecured"
+    version: "v2.1"
+    reference:
+      mode: DEVELOPMENT
+      start_date: "2024-01-01"
+      end_date: "2024-06-30"
+      source_note: "Development sample signed off by MRMC on 2024-08-14"
+    # Explicit characteristics: types, approved bins and critical flags.
+    variables:
+      - name: MODEL_1_VARIABLE_1
+        type: NUMERIC
+        label: "Bureau score"
+        bins: [300, 600, 650, 700, 750, 800, 900]   # approved scorecard bands
+        critical: true
+        subscore_column: MODEL_1_VARIABLE_1_SUBSCORE
+      - name: MODEL_1_VARIABLE_2
+        type: NUMERIC
+        label: "FOIR (%)"
+        bins: [0, 20, 30, 40, 50, 60, 100]
+        subscore_column: MODEL_1_VARIABLE_2_SUBSCORE
+      - name: MODEL_1_VARIABLE_3
+        type: NUMERIC
+        label: "Credit history vintage (months)"
+        n_bins: 8
+        subscore_column: MODEL_1_VARIABLE_3_SUBSCORE
+      - name: MODEL_1_VARIABLE_4
+        type: NUMERIC
+        label: "Bureau enquiries (6m)"
+        bins: [0, 1, 2, 3, 5, 100]
+        subscore_column: MODEL_1_VARIABLE_4_SUBSCORE
+      - name: MODEL_1_VARIABLE_5
+        type: CATEGORICAL
+        label: "Employment type"
+        categories: [SALARIED, SELF_EMPLOYED, SELF_EMPLOYED_PROF]
+      - name: MODEL_1_VARIABLE_6
+        type: CATEGORICAL
+        label: "Residence type"
+        categories: [OWNED, RENTED, PARENTAL, COMPANY]
+
+  MODEL_2:
+    segment_column: MODEL_2_SEGMENT
+    score_column: MODEL_2_TOTAL_SCORE
+    description: "Loan against property application scorecard"
+    owner: "Retail Risk - Secured"
+    version: "v1.4"
+    reference:
+      mode: DEVELOPMENT
+      start_date: "2024-01-01"
+      end_date: "2024-12-31"
+      source_note: "Full-year development sample"
+    # Discovery instead of an explicit list: works for 5 or 5,000 columns.
+    discovery:
+      include_patterns: ["^MODEL_2_VARIABLE_"]
+      exclude_patterns: ["_WOE$"]
+      subscore_suffix: "_SUBSCORE"
+      monitor_subscores: true
+      categorical_max_unique: 15
+
+  MODEL_3:
+    segment_column: MODEL_3_SEGMENT
+    score_column: MODEL_3_TOTAL_SCORE
+    description: "Business loan application scorecard"
+    owner: "SME Risk"
+    version: "v3.0"
+    reference:
+      # A separately approved post-implementation baseline rather than the
+      # development sample.
+      mode: PRODUCTION_BASELINE
+      start_date: "2024-07-01"
+      end_date: "2024-12-31"
+      source_note: "First two stable quarters after the v3.0 implementation"
+    variables:
+      - name: MODEL_3_VARIABLE_1
+        type: NUMERIC
+        label: "Annual turnover"
+        n_bins: 10
+        subscore_column: MODEL_3_VARIABLE_1_SUBSCORE
+      - name: MODEL_3_VARIABLE_2
+        type: CATEGORICAL
+        label: "Business type"
+        critical: true
+      - name: MODEL_3_VARIABLE_3
+        type: NUMERIC
+        label: "Current ratio"
+        bins: [0, 0.8, 1.0, 1.25, 1.5, 2.0, 10]
+        subscore_column: MODEL_3_VARIABLE_3_SUBSCORE
+      - name: MODEL_3_VARIABLE_4
+        type: CATEGORICAL
+        label: "GST filings in last 12 months"
+
+  MODEL_4:
+    segment_column: MODEL_4_SEGMENT
+    score_column: MODEL_4_TOTAL_SCORE
+    description: "Digital-channel fraud/credit hybrid scorecard (newly implemented)"
+    owner: "Digital Risk"
+    version: "v0.9"
+    reference:
+      mode: DEVELOPMENT
+      start_date: "2025-07-01"
+      end_date: "2025-09-30"
+      source_note: "Pilot period only - deliberately thin, see the adequacy alert"
+    variables:
+      - name: MODEL_4_VARIABLE_1
+        type: NUMERIC
+        label: "Deposit-to-EMI ratio"
+        n_bins: 5
+        subscore_column: MODEL_4_VARIABLE_1_SUBSCORE
+      - name: MODEL_4_VARIABLE_2
+        type: CATEGORICAL
+        label: "Application velocity (30d)"
+      - name: MODEL_4_VARIABLE_3
+        type: CATEGORICAL
+        label: "Device risk band"
+        categories: [LOW, MEDIUM, HIGH]

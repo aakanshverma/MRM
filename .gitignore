@@ -14,3 +14,6 @@ data/*.parquet
 !output/sample/**
 !output/sample/*.xlsx
 !output/sample/*.log
+!output/offus/**
+!output/offus/*.xlsx
+!output/offus/*.log
